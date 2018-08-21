@@ -1,16 +1,25 @@
 # Very alpha version of my own face                 #
 # detector program, based on work of others         #
 # All rights reserved to respective owners          #
+# This version is for entrace to office             #
 # @2018 Jacob Stanislawski                          #
-
 
 import numpy
 import cv2
 import os
+import subprocess as tts
+import schedule
 import time
 
+#Path to espeak command tool
+espeak = "C:\eSpeak\command_line\espeak.exe"
+phrase = "Dzien dobry, "
+
+#Save current hour to value
+currHour = time.localtime().tm_hour
+
 #Prepare the namelist for all faces we have in database - remember, the index of face must be equal to the number of folder s(number)
-subjects = ["", "Kuba", "Janusz", "Obama"]
+subjects = [["", 0], ["Kuba", 0], ["Janusz", 0], ["Obama", 0]]
 
 #Create the classifier to find faces later on
 faceFinder = cv2.CascadeClassifier('haarcascade_frontalface.xml')
@@ -66,6 +75,14 @@ def prepare_training_data(data_folder_path):
     
     return faces, labels
 
+#Function for schedule
+def resetList():
+    for subject in subjects:
+       subject[1] = 0
+
+#Lets prepare schedule for entrace and exit
+schedule.every().day.at("23:59").do(resetList)
+
 faces, labels = prepare_training_data("face-database")
 
 #This part we tell program to start learning on all the data we prepared, the "food"
@@ -73,7 +90,7 @@ face_recognizer = cv2.face.LBPHFaceRecognizer_create()
 face_recognizer.train(faces, numpy.array(labels))
 
 #Start capturing
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture('rtsp://admin:1qazxsw2@192.168.51.108:554/cam/realmonitor?channel=1&subtype=1&unicast=true&proto=Onvif')
 
 while(True):
     #Capture single frame from camera
@@ -87,16 +104,26 @@ while(True):
 
     
     for (x,y,w,h) in faces:
-        #Draw rectangle for each face
-        cv2.rectangle(img, (x, y), (x+w, y+h), (255, 0, 0), 2)
-
         #Find the index of person to whom the detected face belongs
         label, confidence = face_recognizer.predict(gray[y:y+h,x:x+w])
 
-        #Name the person based on the array of names
-        whois = subjects[label]
-        name = whois + "{0:.2f}%".format(round(100 - confidence, 2))
-        cv2.putText(img, str(name), (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+        if(confidence < 80):
+            #Check if the person was already detected, if not, greet them
+            if(subjects[label][1] == 0):
+                subjects[label][1] = 1
+                tts.call([espeak, "-v", "pl", phrase+subjects[label][0]], shell=True)
+        
+            #Draw rectangle for each face
+            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+            #Name the person based on the array of names
+            whois = subjects[label][0]
+            name = whois + "{0:.0f}%".format(round(100 - confidence, 2))
+            cv2.putText(img, str(name), (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        else: 
+            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 0, 255), 2)
+            cv2.putText(img, str("Unknow"), (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
 
     #Return frame with detected faces
     cv2.imshow('Recognizer', img)
